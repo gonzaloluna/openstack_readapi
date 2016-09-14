@@ -19,20 +19,35 @@
 		display: inline-block;
 		margin: 0px 10px;
 	}
+	input[type="search"] {
+		-webkit-appearance: searchfield;
+	}
+	input[type="search"]::-webkit-search-cancel-button {
+		-webkit-appearance: searchfield-cancel-button;
+	}
 	</style>
 </head>
 
 <body>
 <div>
-    <a class="connect" href="">Connect</a>
+    <a class="connect" style="margin: 20px;
+    border: 1px solid silver;
+    border-radius: 10px;
+    padding: 10px;cursor: pointer">Connect</a>
 </div>
 
-<div class="authenticated">
+<div class="authenticated" style="margin: 20px;
+    border: 1px solid silver;
+    border-radius: 10px;
+    padding: 10px;">
     <p>
-        You are using token
-        <span class="token">[no token]</span>
-		<input type="text" id="summit_id" value="current"/>
-		<input type="text" id="location_id" value="131"/>
+        <b>Token</b>
+        <span class="token">No token, please authenticate by clicking on the Connect button above.</span>
+		
+		<div>
+		Summit <input type="text" id="summit_id" value="current" disabled/>
+		Location_id <input type="text" id="location_id" value="131" disabled/>
+		</div>
     </p>
 	<table id="grid-data"  data-ajax="true"  class="table table-condensed table-hover table-striped" >
 		<thead>
@@ -43,6 +58,7 @@
 				<th data-column-id="youtubeID" >YouTubeID</th>
 				<th data-column-id="room" >Room</th>
 				<th data-column-id="youtubeID" >YouTubeID</th>
+				<th data-column-id="tags" data-formatter="csvtags">Tags</th>
 				<th data-column-id="dates" data-formatter="daterange">StartDate-EndDate</th>
 
 			</tr>
@@ -52,7 +68,7 @@
 <script type="text/javascript" charset="utf-8">
         $( document ).ready(function() {
 		
-		// implementation of https://tools.ietf.org/html/rfc6749#section-4.2.1
+			// implementation of https://tools.ietf.org/html/rfc6749#section-4.2.1
             var extractToken = function(hash) {
                 var match = hash.match(/access_token=([\w\d\.\-\_\~\%]+)/);
                 return !!match && match[1];
@@ -99,13 +115,29 @@
 					},
 					url: resourceHost1,
 					requestHandler:function (request) { 
-							var filters = $('#tb_title').val().length ? 'title=@' + $('#tb_title').val().trim() : '';
-							var request = {
-								filter :  filters,
-								page: request.current, 
-								per_page: request.rowCount
-							};
-
+							var title = $('#tb_title').val().length ? 'title=@' + $('#tb_title').val().trim() : '';
+							var keyword = $('#tb_keyword').val().length ? 'tags=@' + $('#tb_keyword').val().trim() : '';
+							var filters =  (title.length && keyword.length ? [ title , keyword ] : keyword+ '' + title);
+							var isSorted = (request.sort);
+							var orderBy = '';
+							if(isSorted){
+								var order = Object.keys(request.sort)[0];
+								var asc = request.sort[Object.keys(request.sort)[0]];
+								orderBy = order + '' + (asc === 'asc' ?  '+' : '-');
+								
+								var request = {
+									filter : filters,
+									page: request.current, 
+									per_page: request.rowCount,
+									order: orderBy,
+								};
+							}else{
+								var request = {
+									filter : filters,
+									page: request.current, 
+									per_page: request.rowCount
+								};
+							}
 							return request; 
 						},
 					responseHandler:function (response) { 
@@ -127,6 +159,16 @@
 								return "";
 							}
 						},
+						csvtags: function (column, row){
+							if(row[column.id]){
+								var arr = jQuery.map( $(row['tags']), function( tag ) {
+								   return tag.tag;
+								});
+								return arr.join(","); 
+							}else{
+								return "";
+							}
+						},
 						daterange: function(column, row){
 							var utcEnd_date = row.end_date;
 							var utcStart_date = row.start_date;
@@ -139,8 +181,10 @@
 					},
 					rowCount: [5, 10, 25, 50, 100],
 					templates: {
-						header: "<div id=\"{{ctx.id}}\" class=\"{{css.header}}\"><div class=\"row\"><div class=\"col-sm-12 actionBar\"><input type='text' class='search-field form-control searchBox' id='tb_event_id' placeholder='EventID'><input type='text' class='search-field form-control searchBox' placeholder='Title' id='tb_title'><input type='text' class='search-field form-control searchBox' placeholder='Room' id='tb_room'><p class=\"{{css.actions}}\"></p></div></div></div>"    
+						header: "<div id=\"{{ctx.id}}\" class=\"{{css.header}}\"><div class=\"row\"><div class=\"col-sm-12 actionBar\"><input type='search' class='search-field form-control searchBox' id='tb_keyword' placeholder='keyword'><input type='search' class='search-field form-control searchBox' placeholder='Title' id='tb_title'><input type='search' class='search-field form-control searchBox' placeholder='Room' id='tb_room'><p class=\"{{css.actions}}\"></p></div></div></div>"    
 					}
+				}).on("loaded.rs.jquery.bootgrid", function(){   			
+					$('[data-toggle="tooltip"]').tooltip();
 				});
            
  
