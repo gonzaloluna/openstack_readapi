@@ -75,9 +75,10 @@
 				$.each(selectedRows, function( index, value ) {
 					var event_id = value;
 					var write_url = write_video_resource.replace('{event_id}', event_id);
+					var you_tube_id = $('[data-xedit][pk="'+event_id+'"').editable('getValue').value;
 					console.log(write_url);
 					var video_data =  {
-						you_tube_id: 'O6Y3WDY1tUo',
+						you_tube_id: you_tube_id,
 						name: 'test video',
 						description: 'test video',
 						display_on_site: true
@@ -202,7 +203,7 @@
 							}
 						},
 						editable: function (column, row) {
-							return "<span data-xedit='true' pk='"+row.id+"'></span>"
+							return "<span data-xedit='true' pk='"+row.id+"'></span>";
 						},
 						daterange: function(column, row){
 							var utcEnd_date = row.end_date;
@@ -234,9 +235,8 @@
 				  $('[data-xedit]').each(function(){    
 					 $(this).editable({
 					  type: 'text',
-					  name: 'score',
-					  url: "...someurl",      
-					  title: 'Enter score'
+					  name: 'value',
+					  title: 'Enter video id'
 					});
 				  });
 				});
