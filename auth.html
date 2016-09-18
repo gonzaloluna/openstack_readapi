@@ -15,7 +15,7 @@
 	<script src="js/jquery.formatDateTime.js"></script>
 	<script src="https://vitalets.github.io/x-editable/assets/x-editable/bootstrap3-editable/js/bootstrap-editable.js"></script>
 	<link rel="stylesheet" href="https://vitalets.github.io/x-editable/assets/x-editable/bootstrap3-editable/css/bootstrap-editable.css">
-	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/URI.js/1.18.1/URI.js"></script>
 	<style>
 	.searchBox {
 		width: 200px;
@@ -57,209 +57,268 @@
 			<tr>
 				<th data-column-id="id" data-type="numeric" data-converter="numeric" data-identifier="true">EventID</th>
 				<th data-column-id="title" searchable="true">Event Title</th>
-				<th data-column-id="speakers" data-formatter="csv">Speakers</th>
-				<th data-column-id="youtubeID" data-formatter="editable">YouTubeID</th>
+				<th data-column-id="speakers" data-formatter="csv" data-sortable="false">Speakers</th>
+				<th data-column-id="youtubeID" data-formatter="editable_youtube" >YouTubeID</th>
 				<th data-column-id="room" >Room</th>
-				<th data-column-id="tags" data-formatter="csvtags">Tags</th>
-				<th data-column-id="dates" data-formatter="daterange">StartDate-EndDate</th>
-
+				<th data-column-id="tags" data-formatter="csvtags" data-sortable="false">Tags</th>
+				<th data-column-id="dates" data-formatter="daterange" data-sortable="false">StartDate-EndDate</th>
 			</tr>
 		</thead>
 	</table>
     <button class="btn btn-default submit-event" type="button" title="Submit"><span class="icon glyphicon glyphicon-floppy-save"></span></button>
-<script type="text/javascript" charset="utf-8">
-        $( document ).ready(function() {
+	<script type="text/javascript" charset="utf-8">
 		
+	    $( document ).ready(function() {
+			
+
+			var extractToken = function() {
+	            var uri = new URI();
+				return URI.parseQuery(uri.fragment()).access_token;
+	        };
+
+	        var extractSummitID = function(){
+	        	return $("#summit_id").val();
+	        	/*
+	        	var uri = new URI();
+				return URI.parseQuery(uri.query()).summit_id;
+				*/
+	        };
+
+			var extractLocationID = function(){
+				return $("#location_id").val();
+				/*
+				var uri = new URI();
+				return URI.parseQuery(uri.query()).location_id;
+				*/
+	        };
+
+	        var client_id = "-0-JX34ftzKBVf9kMq9azqOcuK5UFsQR.openstack.client"; 
+	        var setting =
+	        {
+	            'host': "testopenstackid.openstack.org",
+				'rserver_host': "testresource-server.openstack.org",
+	            'clientId': client_id,
+				'scopes' : 'https://testresource-server.openstack.org/summits/read https://testresource-server.openstack.org/summits/write-videos'
+	        };
+
+        	//these values might be taken from query string, however auth2 redirection is not returning second parameter
+			var summit_id = extractSummitID();
+			var location_id = extractLocationID();
+
+	        var authHost     = "https://" + setting.host;
+			var events_resource = "https://" + setting.rserver_host + '/api/v1/summits/' + summit_id + '/locations/' + location_id + '/events/published';
+			var write_video_resource = "https://" + setting.rserver_host + '/api/v1/summits/current/presentations/{event_id}/videos';
+			var update_video_resource = "https://" + setting.rserver_host + '/api/v1/summits/current/presentations/{event_id}/videos/{video_id}';
+	        var endUserAuthorizationEndpoint = authHost + "/oauth2/auth";
+			
+
+	        var token = extractToken();
+	        if (!token) {
+	            var authUrl = endUserAuthorizationEndpoint +
+	                    "?response_type=token id_token" +
+	                    "&approval_prompt=force"+
+	                    "&scope=" + encodeURI(setting.scopes)+
+	                    "&client_id="  + encodeURI(setting.clientId) +
+	                    "&redirect_uri=" + window.location + '?summit_id=' + summit_id	 + '&location_id=' + location_id;
+
+	            $("a.connect").attr("href", authUrl);
+	            return;
+	        }
+			
+
+			$('span.token').text(token);
+			$("#grid-data").bootgrid({
+				ajax: true,
+				ajaxSettings: {
+					method: "GET",
+					cache: false,
+					beforeSend: function (xhr) {
+						xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
+						xhr.setRequestHeader('Accept', "application/json");
+						xhr.setRequestHeader('Content-Type', 'text/plain');
+					}
+				},
+				url: events_resource,
+				requestHandler:function (request) { 
+						var title = $('#tb_title').val().length ? 'title=@' + $('#tb_title').val().trim() : '';
+						var keyword = $('#tb_keyword').val().length ? 'tags=@' + $('#tb_keyword').val().trim() : '';
+						var filters =  (title.length && keyword.length ? [ title , keyword ] : keyword+ '' + title);
+						var isSorted = (request.sort);
+						var orderBy = '';
+						if(isSorted){
+							var order = Object.keys(request.sort)[0];
+							var asc = request.sort[Object.keys(request.sort)[0]];
+							orderBy = (asc === 'asc' ?  '+' : '-') + order  ;
+							
+							var request = {
+								filter : filters,
+								page: request.current, 
+								per_page: request.rowCount,
+								order: orderBy,
+							};
+						}else{
+							var request = {
+								filter : filters,
+								page: request.current, 
+								per_page: request.rowCount
+							};
+						}
+						return request; 
+					},
+				responseHandler:function (response) { 
+					var response = {
+						current: response.current_page,
+						rowCount: response.per_page,
+						rows: response.data,
+						total: response.total
+					};
+
+					return response; 
+			
+				},
+				 formatters: {
+					csv: function (column, row){
+						if(row[column.id]){
+							return row[column.id].join(","); 
+						}else{
+							return "";
+						}
+					},
+					csvtags: function (column, row){
+						if(row[column.id]){
+							var arr = jQuery.map( $(row['tags']), function( tag ) {
+							   return tag.tag;
+							});
+							return arr.join(","); 
+						}else{
+							return "";
+						}
+					},
+					youtubeID: function (column, row){
+						if(row[column.id]){
+							var arr = jQuery.map( $(row['videos']), function( video ) {
+							   return video.name;
+							});
+							return arr.join(","); 
+						}else{
+							return "";
+						}
+					},
+					editable_youtube: function (column, row) {
+						var videos = "";
+						
+						if(row["videos"][0]){
+							var video_data = row['videos'][0];
+							return "<span data-xedit='true' pk='"+row.id+"' data-video_id='"+ video_data.id +"' >"+ video_data.name +"</span>";
+						}else{
+							return "<span data-xedit='true' pk='"+row.id+"' ></span>";
+						}
+
+					},
+					daterange: function(column, row){
+						var utcEnd_date = row.end_date;
+						var utcStart_date = row.start_date;
+						var startDate = new Date(0); // The 0 there is the key, which sets the date to the epoch
+						var endDate = new Date(0); 
+						startDate.setUTCSeconds(utcStart_date);
+						endDate.setUTCSeconds(utcEnd_date);
+						return $.formatDateTime("mm/dd/yy",startDate) +"-"+$.formatDateTime("mm/dd/yy",endDate);
+					}
+				},
+				rowCount: [5, 10, 25, 50, 100],
+				templates: {
+					header: "<div id=\"{{ctx.id}}\" class=\"{{css.header}}\"><div class=\"row\"><div class=\"col-sm-12 actionBar\"><input type='search' class='search-field form-control searchBox' id='tb_keyword' placeholder='keyword'><input type='search' class='search-field form-control searchBox' placeholder='Title' id='tb_title'><input type='search' class='search-field form-control searchBox' placeholder='Room' id='tb_room'><p class=\"{{css.actions}}\"></p></div></div></div>"    
+				},
+				selection: true,
+				multiSelect: true,
+				
+			}).on("selected.rs.jquery.bootgrid", function (e, rows) {
+				console.log(rows);
+				console.log("selected");
+			}).on("deselected.rs.jquery.bootgrid", function (e, rows) {
+				console.log("deselected");
+			}).on("click.rs.jquery.bootgrid", function (e,columns,rows) {
+				console.log("click");
+			}).on("loaded.rs.jquery.bootgrid", function (e){
+			  $('[data-xedit]').each(function(){    
+				 $(this).editable({
+				  type: 'text',
+				  name: 'value',
+				  title: 'Enter video id'
+				});
+			  });
+			});
+
 			$(".submit-event").on('click', function (){
 				var selectedRows = $("#grid-data").bootgrid("getSelectedRows");
 				$.each(selectedRows, function( index, value ) {
+
 					var event_id = value;
+					var you_tube_id = $('[data-xedit][pk="'+event_id+'"]').editable('getValue').value;
+					var video_id = $('[data-xedit][pk="'+event_id+'"]').data("video_id");
 					var write_url = write_video_resource.replace('{event_id}', event_id);
-					var you_tube_id = $('[data-xedit][pk="'+event_id+'"').editable('getValue').value;
-					console.log(write_url);
+					var update_url = update_video_resource.replace('{event_id}', event_id);
+			
 					var video_data =  {
 						you_tube_id: you_tube_id,
-						name: 'test video',
-						description: 'test video',
+						name: you_tube_id,
+						description: you_tube_id,
 						display_on_site: true
 					};
-					$.ajax({
-						url: write_url,
-						type: "POST",
-						contentType: "application/json; charset=utf-8",
-						beforeSend: function (xhr) {
-							xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
-							xhr.setRequestHeader('Accept', "application/json");
-							xhr.setRequestHeader('Content-Type', 'application/json"');
-						}, 
-						data: JSON.stringify(video_data),
-						success: function (data, textStatus, jqXHR ) {
-							console.log(data);
-						},
-						error:function (jqXHR, textStatus, errorThrown ){
-							console.log(errorThrown);
-						}						
-					});
+					if(video_id){
+						updateVideo(event_id, video_id, video_data);
+					}else{
+						addVideo(event_id, video_data);
+					}
 				});
-				
-				
 			});
-			// implementation of https://tools.ietf.org/html/rfc6749#section-4.2.1
-            var extractToken = function(hash) {
-                var match = hash.match(/access_token=([\w\d\.\-\_\~\%]+)/);
-                return !!match && match[1];
-            };
-			
-            var setting =
-            {
-                'host': "testopenstackid.openstack.org",
-				'rserver_host': "testresource-server.openstack.org",
-                'clientId':"-0-JX34ftzKBVf9kMq9azqOcuK5UFsQR.openstack.client",
-				'scopes' : 'https://testresource-server.openstack.org/summits/read https://testresource-server.openstack.org/summits/write-videos'
-            };
 
-			var summit_id = $("#summit_id").val();
-			var location_id = $("#location_id").val();
-            var authHost     = "https://" + setting.host;
-     
-			var resourceHost1 = "https://"+setting.rserver_host+'/api/v1/summits/'+ summit_id + '/locations/' + location_id + '/events/published';
-				//resourceHost1 = "https://"+setting.rserver_host+'/api/v1/summits/' + summit_id + '/events/published';
-			var write_video_resource = "https://"+setting.rserver_host+'/api/v1/summits/current/presentations/{event_id}/videos';
-			var resourceHost3 = "https://"+setting.rserver_host+'/api/v1/marketplace/private-clouds';
-			var resourceHost4 = "https://"+setting.rserver_host+'/api/v1/marketplace/consultants';
-
-            var endUserAuthorizationEndpoint = authHost + "/oauth2/auth";
-
-            var token = extractToken(document.location.hash);
-
-            if (token) {
-				$('div.authenticated').show();
-				$('span.token').text(token);
-				$("#grid-data").bootgrid({
-					ajax: true,
-					ajaxSettings: {
-						method: "GET",
-						cache: false,
-						beforeSend: function (xhr) {
-							xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
-							xhr.setRequestHeader('Accept', "application/json");
-							xhr.setRequestHeader('Content-Type', 'text/plain');
-						}
+			var addVideo =  function(event_id, json_video_data){
+				var write_url = write_video_resource.replace('{event_id}', event_id);
+				$.ajax({
+					url: write_url,
+					type: "POST",
+					contentType: "application/json; charset=utf-8",
+					beforeSend: function (xhr) {
+						xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
+						xhr.setRequestHeader('Accept', "application/json");
+						xhr.setRequestHeader('Content-Type', 'application/json"');
+					}, 
+					data: JSON.stringify(json_video_data),
+					success: function (data, textStatus, jqXHR ) {
+						console.log(data);
+						$('[data-xedit][pk="'+event_id+'"]').data('video_id', data);
+						console.log('added video ' + data);
 					},
-					url: resourceHost1,
-					requestHandler:function (request) { 
-							var title = $('#tb_title').val().length ? 'title=@' + $('#tb_title').val().trim() : '';
-							var keyword = $('#tb_keyword').val().length ? 'tags=@' + $('#tb_keyword').val().trim() : '';
-							var filters =  (title.length && keyword.length ? [ title , keyword ] : keyword+ '' + title);
-							var isSorted = (request.sort);
-							var orderBy = '';
-							if(isSorted){
-								var order = Object.keys(request.sort)[0];
-								var asc = request.sort[Object.keys(request.sort)[0]];
-								orderBy = (asc === 'asc' ?  '+' : '-') + order  ;
-								
-								var request = {
-									filter : filters,
-									page: request.current, 
-									per_page: request.rowCount,
-									order: orderBy,
-								};
-							}else{
-								var request = {
-									filter : filters,
-									page: request.current, 
-									per_page: request.rowCount
-								};
-							}
-							return request; 
-						},
-					responseHandler:function (response) { 
-						var response = {
-							current: response.current_page,
-							rowCount: response.per_page,
-							rows: response.data,
-							total: response.total
-						};
-
-						return response; 
-				
-					},
-					 formatters: {
-						csv: function (column, row){
-							if(row[column.id]){
-								return row[column.id].join(","); 
-							}else{
-								return "";
-							}
-						},
-						csvtags: function (column, row){
-							if(row[column.id]){
-								var arr = jQuery.map( $(row['tags']), function( tag ) {
-								   return tag.tag;
-								});
-								return arr.join(","); 
-							}else{
-								return "";
-							}
-						},
-						editable: function (column, row) {
-							return "<span data-xedit='true' pk='"+row.id+"'></span>";
-						},
-						daterange: function(column, row){
-							var utcEnd_date = row.end_date;
-							var utcStart_date = row.start_date;
-							var startDate = new Date(0); // The 0 there is the key, which sets the date to the epoch
-							var endDate = new Date(0); 
-							startDate.setUTCSeconds(utcStart_date);
-							endDate.setUTCSeconds(utcEnd_date);
-							return $.formatDateTime("mm/dd/yy",startDate) +"-"+$.formatDateTime("mm/dd/yy",endDate);
-						}
-					},
-					rowCount: [5, 10, 25, 50, 100],
-					templates: {
-						header: "<div id=\"{{ctx.id}}\" class=\"{{css.header}}\"><div class=\"row\"><div class=\"col-sm-12 actionBar\"><input type='search' class='search-field form-control searchBox' id='tb_keyword' placeholder='keyword'><input type='search' class='search-field form-control searchBox' placeholder='Title' id='tb_title'><input type='search' class='search-field form-control searchBox' placeholder='Room' id='tb_room'><p class=\"{{css.actions}}\"></p></div></div></div>"    
-					},
-					selection: true,
-					multiSelect: true,
-					
-				}).on("loaded.rs.jquery.bootgrid", function(){   			
-					$('[data-toggle="tooltip"]').tooltip();
-				}).on("selected.rs.jquery.bootgrid", function (e, rows) {
-					console.log(rows);
-					console.log("selected");
-				}).on("deselected.rs.jquery.bootgrid", function (e, rows) {
-					console.log("deselected");
-				}).on("click.rs.jquery.bootgrid", function (e,columns,rows) {
-					console.log("click");
-				}).on("loaded.rs.jquery.bootgrid", function (e){
-				  $('[data-xedit]').each(function(){    
-					 $(this).editable({
-					  type: 'text',
-					  name: 'value',
-					  title: 'Enter video id'
-					});
-				  });
+					error:function (jqXHR, textStatus, errorThrown ){
+						console.log(errorThrown);
+					}						
 				});
- 
-            } else {
-                $('div.authenticate').show();
+			};
 
-                var authUrl = endUserAuthorizationEndpoint +
-                        "?response_type=token id_token" +
-                        "&approval_prompt=force"+
-                        "&scope=" + encodeURI(setting.scopes)+
-                        "&client_id="  + encodeURI(setting.clientId) +
-                        "&state=123456" +
-						"&nonce=123456" +
-						"&display=page" +
-						"&login_hint=gnl.luna@gmail.com"+	
-                        "&redirect_uri=" + window.location;
-
-                $("a.connect").attr("href", authUrl);
-			}
-        });
-    </script>
-
+	        var updateVideo =  function(event_id, video_id, json_video_data){
+	        	var update_url = update_video_resource.replace('{video_id}', video_id).replace('{event_id}', event_id);
+				$.ajax({
+					url: update_url,
+					type: "PUT",
+					contentType: "application/json; charset=utf-8",
+					beforeSend: function (xhr) {
+						xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
+						xhr.setRequestHeader('Accept', "application/json");
+						xhr.setRequestHeader('Content-Type', 'application/json"');
+					}, 
+					data: JSON.stringify(json_video_data),
+					success: function (data, textStatus, jqXHR ) {
+						console.log(data);
+						console.log('updated ' + data)
+					},
+					error:function (jqXHR, textStatus, errorThrown ){
+						console.log(errorThrown);
+					}						
+				});
+			};
+	    });
+	</script>
 </div>
 </body>
 </html>
