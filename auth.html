@@ -109,6 +109,7 @@
 			var events_resource = "https://" + setting.rserver_host + '/api/v1/summits/' + summit_id + '/locations/' + location_id + '/events/published';
 			var write_video_resource = "https://" + setting.rserver_host + '/api/v1/summits/current/presentations/{event_id}/videos';
 			var update_video_resource = "https://" + setting.rserver_host + '/api/v1/summits/current/presentations/{event_id}/videos/{video_id}';
+			var delete_video_resource = "https://" + setting.rserver_host + '/api/v1/summits/current/presentations/{event_id}/videos/{video_id}';
 	        var endUserAuthorizationEndpoint = authHost + "/oauth2/auth";
 			
 
@@ -258,6 +259,7 @@
 					var video_id = $('[data-xedit][pk="'+event_id+'"]').data("video_id");
 					var write_url = write_video_resource.replace('{event_id}', event_id);
 					var update_url = update_video_resource.replace('{event_id}', event_id);
+					var delete_url = delete_video_resource.replace('{event_id}', event_id);
 			
 					var video_data =  {
 						you_tube_id: you_tube_id,
@@ -265,10 +267,14 @@
 						description: you_tube_id,
 						display_on_site: true
 					};
-					if(video_id){
+					if(video_id && you_tube_id.trim().length == 0){
+						deleteVideo(event_id, video_id, video_data);
+					}else if(video_id){
 						updateVideo(event_id, video_id, video_data);
-					}else{
+					}else if(video_data.you_tube_id.trim().length > 0){
 						addVideo(event_id, video_data);
+					}else{
+						console.log("Nothing to do!");
 					}
 				});
 			});
@@ -309,8 +315,27 @@
 					}, 
 					data: JSON.stringify(json_video_data),
 					success: function (data, textStatus, jqXHR ) {
-						console.log(data);
-						console.log('updated ' + data)
+						console.log('updated');
+					},
+					error:function (jqXHR, textStatus, errorThrown ){
+						console.log(errorThrown);
+					}						
+				});
+			};
+			
+			var deleteVideo =  function(event_id, video_id, json_video_data){
+	        	var update_url = delete_video_resource.replace('{video_id}', video_id).replace('{event_id}', event_id);
+				$.ajax({
+					url: update_url,
+					type: "DELETE",
+					contentType: "application/json; charset=utf-8",
+					beforeSend: function (xhr) {
+						xhr.setRequestHeader ("Authorization", "Bearer " + unescape(token));
+						xhr.setRequestHeader('Accept', "application/json");
+						xhr.setRequestHeader('Content-Type', 'application/json"');
+					}, 
+					success: function (data, textStatus, jqXHR ) {
+						console.log('deleted');
 					},
 					error:function (jqXHR, textStatus, errorThrown ){
 						console.log(errorThrown);
